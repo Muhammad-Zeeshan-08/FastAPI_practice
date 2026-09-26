@@ -1,4 +1,5 @@
 from asyncio.windows_events import NULL
+from unittest.mock import Base
 from pydantic import BaseModel
 
 from fastapi import FastAPI
@@ -82,6 +83,32 @@ def user_creation(comp: Address):
     return{
         "message" : "User Created",
         "data" : comp
+    }
+
+# FastAPI Request Parameter Handling: Path + Query + Request Body
+# eg; PUT /Person/{id}?notify=true. Path parameter[id] + Query parameter[notify] + Request Body[update_Person]
+Person_list = []
+class Person(BaseModel):
+    name: str
+    age: int
+@app.post("/Person")
+def upload_Person(Person: Person):
+    Person_list.append(Person)
+    return{
+        "message": "Person Created",
+        "data": Person
+    }
+@app.put("/Person/{id}")
+def update_Person(id:int, update_Person: Person, notify: bool= False):
+    if id< len(Person_list):
+        Person_list[id] = update_Person
+        return{
+            "message": "Person Created",
+            "notify": notify,
+            "updated_data": update_Person
+        }
+    return{
+        "Error": "That specific Person not found" 
     }
 
 if __name__ == "__main__":

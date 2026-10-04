@@ -64,3 +64,12 @@ if __name__ == "__main__":
     uvicorn.run("crud:app", reload=True)    # crud:app  means telling the Uvicorn to run the app of Crud.py file
 
 # @()
+# Edit code
+#    ↓
+# git status
+#    ↓
+# git add .
+#    ↓
+# git commit -m "..."
+#    ↓
+# git push

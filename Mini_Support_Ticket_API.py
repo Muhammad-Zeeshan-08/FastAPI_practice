@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, status
 import uvicorn
 from pydantic import BaseModel
-import time
+from typing import Optional
 
 app = FastAPI()
 # @()
@@ -11,118 +11,104 @@ app = FastAPI()
 #     customer_name, email, subject, description, category: str       #here actually just category is str
 #     priority: int
 
+# *************** REQUEST MODELS **********************
 class CreateTicketRequest(BaseModel):
-    customer_name: str
+    name: str
     email: str
     subject: str
-    description:str
-    priority: int
-    category: str
-    situation: str
+    description: str
+    # priority: int
+    # category: str
+    # status: str
 
 class UpdateTicketRequest(BaseModel):
+    subject: Optional[str] = None
+    description: Optional[str] = None
+    priority: Optional[int] = None
+    status: Optional[str] = None
+
+# *************** RESPONSE MODEL **********************
+class TicketResponse(BaseModel): # describes the shape of ONE item
+    id: int
+    name: str
+    email: str
     subject: str
     description: str
     priority: int
-    situation: str
+    status: str
+    # category: str
 
-class TicketResponse(BaseModel):
-    customer_name: str
-    email: str
-    subject: str
-    description:str
-    category: str
-    situation: str
-
+# *************** LOGIC **********************
 ticket_log = []
 
-@app.post("/tickets")
+# here we take inp from client as per CreateTicketRequest model & server add 3 more data so that it can b/c TicketResponse
+# Invalid request: 422 Unprocessable Entity.    FastAPI/Pydantic provides auto_validation.
+@app.post("/tickets", response_model=TicketResponse, status_code=status.HTTP_201_CREATED)
 def ticket_create(model: CreateTicketRequest):
-    ticket_log.append(model)
-    return{
-        "status": status.HTTP_201_CREATED,
-        "detail": f"The ticket data has been in the system" 
-    }
+    new_ticket = TicketResponse(
+        id=len(ticket_log) + 1,
+        name=model.name,
+        email=model.email,
+        subject=model.subject,
+        description=model.description,
+        priority=1,
+        status="open"
+    )
+    ticket_log.append(new_ticket)
+    return new_ticket
 
-@app.get("/tickets", response_model= TicketResponse)
+@app.get("/tickets",response_model=list[TicketResponse])
 def get_all_tickets():
-    if len(ticket_log) == 0:
-        return{
-            "message": "There is currently no Tickets data"
-        }
+    # if len(ticket_log) == 0:      # wrong b/c it must follow the TicketResponse format
+    #     return{
+    #         "message": "There is currently no Tickets data"
+    #     }
+
+    # if len(ticket_log) == 0:      # correct but not a standord approach thats why just return enough which will sent [] in this scenario
+    #     raise HTTPException(
+    #         status_code=status.HTTP_404_NOT_FOUND, 
+    #         detail="There is currently no Tickets data"
+    #     )
     return ticket_log
 
-@app.get("/tickets/{ticket_id}", response_model= TicketResponse)
-def get_ticket(ticket_id:int):
-    if len(ticket_log) == 0:
-        return{
-            "error_message": "There is currently no Tickets data in the system"
-        }
-    elif ticket_id > len(ticket_log):
-        raise HTTPException(
-            status_code= status.HTTP_404_NOT_FOUND,       
-            detail= "There is no such Ticket number exist in the system"
-        )
-    else:
-        for i, content in enumerate(ticket_log):
-            number = i+1
-            if ticket_id == number:
-                return{
-                    "message": f"The data for Ticket number {number} :",
-                    "data": content
-                }
+@app.get("/tickets/{ticket_id}",response_model=TicketResponse)
+def get_ticket(ticket_id: int):
+    for ticket in ticket_log:
+        if ticket.id == ticket_id: # thats the pydanctic instance benefit over dict. b/c here we can access key/var via .
+            return ticket
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Ticket not found"
+    )
 
-@app.patch("/tickets/{ticket_id}")
-def ticket_partial_update(ticket_id:int, model: UpdateTicketRequest):
-    if len(ticket_log) == 0:
-        return{
-            "error_message": "There is currently no Tickets data in the system"
-        }
-    elif ticket_id > len(ticket_log):
-        raise HTTPException(
-            status_code= status.HTTP_404_NOT_FOUND,       
-            detail= "There is no such Ticket number exist in the system"
-        )
-    else:
-        for i, content in enumerate(ticket_log):
-            if ticket_id == i:
-                return{
-                    "message": f"The ticket data is UPDATED for Ticket number {i} :",
-                    content.subject : model.subject,
-                    content.description : model.description,
-                    content.situation : model.situation,
-                    content.priority : model.priority,
-                }
-    
-@app.delete("/tickets/{ticket_id}")
+@app.patch("/tickets/{ticket_id}",response_model=TicketResponse)
+def ticket_partial_update(ticket_id: int,model: UpdateTicketRequest):
+    for ticket in ticket_log:
+        if ticket.id == ticket_id:
+            updates = model.model_dump(exclude_unset=True) # result in dict form
+        for field, value in updates.items():
+                setattr(ticket, field, value)
+                # updated/merge_item_copy = ticket.model_copy(update=updates) 
+
+        return ticket # updated/merge_item_copy. by this the orginal ticket will remain same
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Ticket not found"
+    )
+
+@app.delete("/tickets/{ticket_id}",status_code=status.HTTP_204_NO_CONTENT)
 def delete_ticket(ticket_id: int):
-    if len(ticket_log) == 0:
-        return{
-            "error_message": "There is currently no Tickets data in the system"
-        }
-    elif ticket_id > len(ticket_log):
-        raise HTTPException(
-            status_code= status.HTTP_404_NOT_FOUND,       
-            detail= "There is no such Ticket number exist in the system"
-        )
-    else:
-        for i, content in enumerate(ticket_log):
-            if ticket_id == i:
-                return{
-                    "message": f"The Ticket number {i} data is DELETED from the system :",
-                    "ticket_log_updated": ticket_log.pop(content)
-                }
+    for i, ticket in enumerate(ticket_log):
+        if ticket.id == ticket_id:
+            ticket_log.pop(i)
+            return
 
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Ticket not found"
+    )
+
+# *************** SERVER EXECUTION **********************
 if __name__ == "__main__":
     uvicorn.run("Mini_Support_Ticket_API:app", reload=True)
-
-# def get_user(user_id:int):
-#     if user_id != 1: 
-#         raise HTTPException(
-#             status_code= 404,       # or status_code= status.HTTP_404_NOT_FOUND,
-#             detail="User Not Found"
-#         )
-#     return{
-#         "id":1,
-#         "name": "Mohit"
-#     }
